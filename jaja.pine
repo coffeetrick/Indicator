@@ -1,0 +1,110 @@
+//+------------------------------------------------------------+
+//| jaja_Pine_Signal_FIX_Synced_MT4                            |
+//| Copyright 2026, Gemini Custom                              |
+//+------------------------------------------------------------+
+//@version=5
+indicator("jaja_Signal_FIX_MT4完全同期版", overlay=true)
+
+// --- 【グループ1】移動平均線 (MA) 設定 ---
+g_ma = "【MA】移動平均線の期間設定"
+ma1_len = input.int(5,   "MA1（白 / BB中央線）", minval=1, group=g_ma)
+ma2_len = input.int(10,  "MA2（黄）", minval=1, group=g_ma)
+ma3_len = input.int(25,  "MA3（橙）", minval=1, group=g_ma)
+ma4_len = input.int(90,  "MA4（緑）", minval=1, group=g_ma)
+ma5_len = input.int(120, "MA5（青）", minval=1, group=g_ma)
+ma6_len = input.int(200, "MA6（桃）", minval=1, group=g_ma)
+
+// --- 【グループ2】判定パラメータの設定 ---
+g_m = "【M】移動平均線収束の判定条件"
+in_conv_pips = input.float(10.0, "収束幅 (Pips)", minval=0.1, group=g_m)
+in_conv_cnt  = input.int(3, "最低MA本数", minval=2, group=g_m)
+
+g_h = "【H】ホライゾンの判定条件"
+horz_pips   = input.float(3.0, "実体の最大幅 (Pips)", minval=0.1, group=g_h)
+horz_bars   = input.int(3, "最低継続本数", group=g_h)
+horz_memory = input.int(5, "ホライゾン記憶保持 (Bar)", group=g_h)
+
+g_b = "【B】BB放たれの判定条件"
+bb_dev    = input.float(2.0, "ボリンジャーバンド偏差", group=g_b)
+sqz_pips  = input.float(30.0, "スクイーズ最大幅 (Pips)", group=g_b)
+exp_pips  = input.float(1.0, "最小拡大幅 (Pips)", group=g_b)
+ang_limit = input.float(0.1, "方向判定の傾き閾値", step=0.01, group=g_b)
+
+// --- 計算ロジック ---
+// ★修正1：Pips値をMT4（Point*10）と完全に同一にするため、USDJPY用に0.01で固定
+pips_val = 0.01
+
+// ★修正2：MT4互換のボリンジャーバンド計算（不偏標準偏差への補正）
+ma1 = ta.sma(close, ma1_len)
+bb_mid = ma1
+// TradingViewのstdevは母標準偏差(÷N)のため、MT4の不偏標準偏差(÷N-1)に合わせる
+unbiased_stdev = ta.stdev(close, ma1_len) * math.sqrt(ma1_len / math.max(1, ma1_len - 1))
+bb_u = bb_mid + bb_dev * unbiased_stdev
+bb_l = bb_mid - bb_dev * unbiased_stdev
+
+ma2 = ta.sma(close, ma2_len), ma3 = ta.sma(close, ma3_len)
+ma4 = ta.sma(close, ma4_len), ma5 = ta.sma(close, ma5_len), ma6 = ta.sma(close, ma6_len)
+
+// 1. 収束 (M)
+check_conv(m1, m2, m3, m4, m5, m6, limit, target_count, p_val) =>
+    ma_list = array.from(m1, m2, m3, m4, m5, m6)
+    found_conv = false
+    for i = 0 to 5
+        count = 0
+        for j = 0 to 5
+            if math.abs(array.get(ma_list, i) - array.get(ma_list, j)) <= limit * p_val
+                count += 1
+        if count >= target_count
+            found_conv := true
+            break
+    found_conv
+
+condM = check_conv(bb_mid, ma2, ma3, ma4, ma5, ma6, in_conv_pips, in_conv_cnt, pips_val)
+
+// 2. ホライゾン (H)
+is_strict_horz = math.abs(open - close) <= horz_pips * pips_val
+has_been_horz = ta.lowest(is_strict_horz ? 1 : 0, horz_bars) > 0
+condH = ta.highest(has_been_horz ? 1 : 0, horz_memory) > 0
+
+// 3. 放たれ (B)
+bw = (bb_u - bb_l) / pips_val
+pbw = (bb_u[1] - bb_l[1]) / pips_val
+ang = (bb_mid - bb_mid[1]) / pips_val
+condExp = pbw < sqz_pips and (bw - pbw) >= exp_pips
+condB_Buy = condExp and ang > ang_limit
+condB_Sell = condExp and ang < -ang_limit
+condB = condB_Buy or condB_Sell
+
+// --- 排他的ラベルロジック ---
+isTriple = condM and condH and condB
+isCond1  = (condM and condB) and not condH
+isCond2  = (condM and condH) and not condB
+isCond3  = (condB and condH) and not condM
+
+showM = condM and not condB and not condH
+showH = condH and not condM and not condB
+showB = condB and not condM and not condH
+
+// --- 描画 ---
+plot(ma2, color=color.yellow, title="MA10")
+plot(ma3, color=color.orange, title="MA25")
+plot(ma4, color=color.green,  title="MA90")
+plot(ma5, color=color.blue,   title="MA120")
+plot(ma6, color=color.fuchsia, title="MA200")
+p_u = plot(bb_u, color=#00FFFF, linewidth=2, title="BB+2σ")
+p_l = plot(bb_l, color=#00FFFF, linewidth=2, title="BB-2σ")
+fill(p_u, p_l, color=color.new(color.white, 95), title="BB塗りつぶし")
+plot(bb_mid, color=color.white, linewidth=3, title="MA5 / BB中央線")
+
+// シグナル
+plotchar(isTriple and condB_Buy,  char='★', location=location.belowbar, color=#FFD700, size=size.normal, title="★究極合致（買い）")
+plotchar(isTriple and condB_Sell, char='★', location=location.abovebar, color=#FF00FF, size=size.normal, title="★究極合致（売り）")
+plotchar(isCond1 and condB_Buy,  char='①', location=location.belowbar, color=color.aqua, size=size.small, title="①収束＋放たれ（買い）")
+plotchar(isCond1 and condB_Sell, char='①', location=location.abovebar, color=color.aqua, size=size.small, title="①収束＋放たれ（売り）")
+plotchar(isCond2, char='②', location=location.belowbar, color=color.aqua, size=size.small, title="②収束＋ホライゾン")
+plotchar(isCond3 and condB_Buy,  char='③', location=location.belowbar, color=color.yellow, size=size.small, title="③ホライゾン＋放たれ（買い）")
+plotchar(isCond3 and condB_Sell, char='③', location=location.abovebar, color=color.yellow, size=size.small, title="③ホライゾン＋放たれ（売り）")
+plotchar(showM, char='M', location=location.belowbar, color=color.aqua, size=size.tiny, title="M単体")
+plotchar(showH, char='H', location=location.abovebar, color=color.yellow, size=size.tiny, title="H単体")
+plotchar(showB and condB_Buy, char='B', location=location.belowbar, color=color.lime, size=size.tiny, title="B単体（買い）")
+plotchar(showB and condB_Sell, char='B', location=location.abovebar, color=color.red, size=size.tiny, title="B単体（売り）")
