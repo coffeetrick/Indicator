@@ -1,10 +1,10 @@
 //+------------------------------------------------------------------+
-//|                                     jaja_Signal_FIX_Synced_BB.mq4|
+//|                                     jaja.mq4                     |
 //|                                  Copyright 2026, Gemini Custom   |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, Gemini"
 #property indicator_chart_window
-// バッファ数を15から17に拡張（BB上・下を追加）
+// ★修正：BB上・下のバッファを含め17個に変更
 #property indicator_buffers 17 
 
 // --- インデックス定義
@@ -58,15 +58,28 @@ input double InpAngLimit=0.1;
 input string Group_Visual = "--- 表示設定 ---";
 input int    InpSigSize=4;        
 
+// --- 通知・アラート設定 ---
+input string Group_Alert = "--- 通知・アラート設定 ---";
+input bool InpAlertEnable = true;       // アラート機能を有効にする
+input bool InpAlertPopup  = true;       // MT4画面のポップアップと音
+input bool InpAlertPush   = true;       // スマホへのプッシュ通知
+input bool InpAlertTripleOnly = false;  // ★(究極合致)の時のみ通知する
+
+// 通知スパム防止用の時間記録変数
+datetime lastAlertTime_T_B = 0;
+datetime lastAlertTime_T_S = 0;
+datetime lastAlertTime_1   = 0;
+datetime lastAlertTime_2   = 0;
+datetime lastAlertTime_3   = 0;
+
 // --- バッファ配列 ---
 double bMA1[], bMA2[], bMA3[], bMA4[], bMA5[], bMA6[];
 double bM[], bH[], bB_B[], bB_S[], b1[], b2[], b3[], bT_B[], bT_S[];
-double bBBU[], bBBL[]; // BB描画用
+double bBBU[], bBBL[]; // BB用追加
 
 int OnInit() {
    IndicatorBuffers(17);
    
-   // --- 移動平均線 ---
    SetIndexBuffer(0,bMA1); SetIndexStyle(0,DRAW_LINE);
    SetIndexBuffer(1,bMA2); SetIndexStyle(1,DRAW_LINE);
    SetIndexBuffer(2,bMA3); SetIndexStyle(2,DRAW_LINE);
@@ -74,7 +87,6 @@ int OnInit() {
    SetIndexBuffer(4,bMA5); SetIndexStyle(4,DRAW_LINE);
    SetIndexBuffer(5,bMA6); SetIndexStyle(5,DRAW_LINE);
 
-   // --- シグナル ---
    SetIndexBuffer(BUF_M,bM);      SetIndexStyle(BUF_M, DRAW_ARROW, EMPTY, 2); SetIndexArrow(BUF_M,77);
    SetIndexBuffer(BUF_H,bH);      SetIndexStyle(BUF_H, DRAW_ARROW, EMPTY, 2); SetIndexArrow(BUF_H,72);
    SetIndexBuffer(BUF_B_B,bB_B);  SetIndexStyle(BUF_B_B, DRAW_ARROW, EMPTY, 2); SetIndexArrow(BUF_B_B,66);
@@ -86,13 +98,12 @@ int OnInit() {
    
    SetIndexBuffer(BUF_T_B,bT_B);  SetIndexStyle(BUF_T_B, DRAW_ARROW, EMPTY, InpSigSize+1); SetIndexArrow(BUF_T_B,171);
    SetIndexBuffer(BUF_T_S,bT_S);  SetIndexStyle(BUF_T_S, DRAW_ARROW, EMPTY, InpSigSize+1); SetIndexArrow(BUF_T_S,171);
-   
-   // --- ボリンジャーバンド ---
+
+   // ★復活：ボリンジャーバンドの描画
    SetIndexBuffer(BUF_BBU,bBBU);  SetIndexStyle(BUF_BBU, DRAW_LINE, STYLE_SOLID, 2);
    SetIndexBuffer(BUF_BBL,bBBL);  SetIndexStyle(BUF_BBL, DRAW_LINE, STYLE_SOLID, 2);
-
-   // 空の値をセット（シグナル用バッファのみ）
-   for(int i=BUF_M; i<=BUF_T_S; i++) SetIndexEmptyValue(i, 0.0);
+   
+   for(int i=BUF_M; i<=BUF_BBL; i++) SetIndexEmptyValue(i, 0.0);
    
    return(INIT_SUCCEEDED);
 }
@@ -105,6 +116,7 @@ int OnCalculate(const int rates_total,const int prev_calculated,const datetime &
    ArraySetAsSeries(high, true);
    ArraySetAsSeries(low, true);
    ArraySetAsSeries(close, true);
+   ArraySetAsSeries(time, true);
 
    int limit = rates_total - prev_calculated;
    if(limit <= 0) limit = 1;
@@ -113,7 +125,6 @@ int OnCalculate(const int rates_total,const int prev_calculated,const datetime &
    double pUnit = (Digits==3 || Digits==5) ? Point*10 : Point;
 
    for(int i=limit; i>=0; i--) {
-      // MA計算
       bMA1[i]=iMA(NULL,0,InpMA1,0,MODE_SMA,PRICE_CLOSE,i);
       bMA2[i]=iMA(NULL,0,InpMA2,0,MODE_SMA,PRICE_CLOSE,i);
       bMA3[i]=iMA(NULL,0,InpMA3,0,MODE_SMA,PRICE_CLOSE,i);
@@ -146,12 +157,13 @@ int OnCalculate(const int rates_total,const int prev_calculated,const datetime &
       // --- [3] B判定 & BB描画 ---
       double bbu=iBands(NULL,0,InpMA1,InpBBDev,0,PRICE_CLOSE,MODE_UPPER,i);
       double bbl=iBands(NULL,0,InpMA1,InpBBDev,0,PRICE_CLOSE,MODE_LOWER,i);
-      double pbbu=iBands(NULL,0,InpMA1,InpBBDev,0,PRICE_CLOSE,MODE_UPPER,i+1);
-      double pbbl=iBands(NULL,0,InpMA1,InpBBDev,0,PRICE_CLOSE,MODE_LOWER,i+1);
       
-      // ★チャートへ描画するために配列へ格納
+      // ★復活：BBをチャートに描画
       bBBU[i] = bbu;
       bBBL[i] = bbl;
+      
+      double pbbu=iBands(NULL,0,InpMA1,InpBBDev,0,PRICE_CLOSE,MODE_UPPER,i+1);
+      double pbbl=iBands(NULL,0,InpMA1,InpBBDev,0,PRICE_CLOSE,MODE_LOWER,i+1);
       
       double bw=(bbu-bbl)/pUnit, pbw=(pbbu-pbbl)/pUnit;
       double ang=(bMA1[i]-iMA(NULL,0,InpMA1,0,MODE_SMA,PRICE_CLOSE,i+1))/pUnit;
@@ -174,6 +186,40 @@ int OnCalculate(const int rates_total,const int prev_calculated,const datetime &
          if(cH) bH[i] = high[i]+5*pUnit;
          if(bBuy) bB_B[i] = low[i]-15*pUnit;
          if(bSell) bB_S[i] = high[i]+15*pUnit;
+      }
+
+      // --- [5] アラート・通知処理 ---
+      if(InpAlertEnable && i == 0) {
+         string symbol = Symbol();
+         string tf = EnumToString((ENUM_TIMEFRAMES)Period());
+         string msg = "";
+
+         if(cM && cH && cB) { 
+            if(bBuy && time[0] != lastAlertTime_T_B) {
+               msg = "【jaja】" + symbol + " (" + tf + ") ★究極合致(買い)発生！";
+               lastAlertTime_T_B = time[0];
+            } else if(bSell && time[0] != lastAlertTime_T_S) {
+               msg = "【jaja】" + symbol + " (" + tf + ") ★究極合致(売り)発生！";
+               lastAlertTime_T_S = time[0];
+            }
+         } 
+         else if(!InpAlertTripleOnly) { 
+            if(cM && cB && time[0] != lastAlertTime_1) {
+               msg = "【jaja】" + symbol + " (" + tf + ") ①収束+放たれ！";
+               lastAlertTime_1 = time[0];
+            } else if(cM && cH && time[0] != lastAlertTime_2) {
+               msg = "【jaja】" + symbol + " (" + tf + ") ②収束+ホライゾン(パワー蓄積中)";
+               lastAlertTime_2 = time[0];
+            } else if(cB && cH && time[0] != lastAlertTime_3) {
+               msg = "【jaja】" + symbol + " (" + tf + ") ③ホライゾン+放たれ(初動)";
+               lastAlertTime_3 = time[0];
+            }
+         }
+
+         if(msg != "") {
+            if(InpAlertPopup) Alert(msg);
+            if(InpAlertPush) SendNotification(msg);
+         }
       }
    }
    return(rates_total);
