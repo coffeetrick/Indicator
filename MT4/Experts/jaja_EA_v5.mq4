@@ -486,3 +486,52 @@ void OnTick()
       }
    }
 }
+
+//+------------------------------------------------------------------+
+//| バックテスト完了時に結果をCSVへ書き出す                         |
+//| Python自動化システムがこのファイルを読み込む                    |
+//+------------------------------------------------------------------+
+double OnTester()
+{
+   double profit   = TesterStatistics(STAT_PROFIT);
+   double pf       = TesterStatistics(STAT_PROFIT_FACTOR);
+   double dd_abs   = TesterStatistics(STAT_EQUITY_DD);
+   double dd_rel   = TesterStatistics(STAT_EQUITY_DD_RELATIVE);  // %
+   double trades   = TesterStatistics(STAT_TRADES);
+   double wins     = TesterStatistics(STAT_WIN_TRADES);
+   double gross_p  = TesterStatistics(STAT_GROSS_PROFIT);
+   double gross_l  = TesterStatistics(STAT_GROSS_LOSS);
+   double sharpe   = TesterStatistics(STAT_SHARPE_RATIO);
+   double win_rate = (trades > 0) ? (wins / trades * 100.0) : 0.0;
+   double avg_win  = (wins > 0)   ? (gross_p / wins) : 0.0;
+   double losses   = trades - wins;
+   double avg_loss = (losses > 0) ? (MathAbs(gross_l) / losses) : 0.0;
+   double rr_ratio = (avg_loss > 0) ? (avg_win / avg_loss) : 0.0;
+
+   // 結果をCSVに書き出す (Python側が読み込む)
+   int h = FileOpen("backtest_result.csv", FILE_WRITE | FILE_CSV | FILE_ANSI);
+   if(h != INVALID_HANDLE) {
+      // ヘッダー行
+      FileWrite(h, "profit", "pf", "dd_rel", "dd_abs", "trades",
+                   "win_rate", "avg_win", "avg_loss", "rr_ratio", "sharpe");
+      // データ行
+      FileWrite(h,
+         DoubleToString(profit,   2),
+         DoubleToString(pf,       4),
+         DoubleToString(dd_rel,   4),
+         DoubleToString(dd_abs,   2),
+         IntegerToString((int)trades),
+         DoubleToString(win_rate, 2),
+         DoubleToString(avg_win,  2),
+         DoubleToString(avg_loss, 2),
+         DoubleToString(rr_ratio, 4),
+         DoubleToString(sharpe,   4)
+      );
+      FileClose(h);
+      Print("【jaja EA v5】バックテスト結果書き出し完了: backtest_result.csv");
+   }
+
+   // フィットネス値: PF重視、DDペナルティあり、取引数が少なすぎる場合は0
+   if(trades < 10 || pf <= 0.0 || dd_rel > 50.0) return 0.0;
+   return pf / (1.0 + dd_rel / 100.0);
+}
