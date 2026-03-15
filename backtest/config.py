@@ -10,7 +10,7 @@ from pathlib import Path
 MT4_EXE = r"C:\Program Files (x86)\FXTF MT4\terminal.exe"
 
 # MT4 データディレクトリ (AppData 内)
-MT4_DATA_DIR = Path(r"C:\Users\ruri_\AppData\Roaming\MetaQuotes\Terminal\A84B568DA10F82FE5A8FF6A859153D6F")
+MT4_DATA_DIR = Path(r"C:\Users\ruri_\AppData\Roaming\MetaQuotes\Terminal\F1DD1D6E7C4A311D1B1CA0D34E33291D")
 
 MT4_EXPERTS_DIR  = MT4_DATA_DIR / "MQL4" / "Experts"
 MT4_TESTER_DIR   = MT4_DATA_DIR / "tester"
