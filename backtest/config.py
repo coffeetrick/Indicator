@@ -29,9 +29,10 @@ EA_SOURCE = Path(r"C:\dev\claude\Indicator\MT4\Experts\jaja_EA_v5.mq4")
 # ============================================================
 DEFAULT_SYMBOL   = "USDJPY-cd"
 DEFAULT_PERIOD   = 5          # M5 (MT4数値: 1=M1, 5=M5, 15=M15, 60=H1, 240=H4)
-DEFAULT_FROM     = "2024.01.01"
-DEFAULT_TO       = "2024.12.31"
-DEFAULT_MODEL    = 1          # 0=全ティック, 1=始値のみ(高速), 2=コントロールポイント
+DEFAULT_FROM     = "2026.02.01"
+DEFAULT_TO       = "2026.03.15"
+DEFAULT_MODEL    = 0          # terminal.ini: 0=始値のみ(最速), 1=コントロールポイント, 2=全ティック(最遅)
+                               # lastparameters.ini method: 0=全ティック, 1=コントロールポイント, 2=始値のみ
 DEFAULT_DEPOSIT  = 1000000    # 初期証拠金 (円)
 DEFAULT_LEVERAGE = 100
 DEFAULT_CURRENCY = "JPY"

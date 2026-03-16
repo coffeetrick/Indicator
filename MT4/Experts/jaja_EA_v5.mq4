@@ -16,6 +16,11 @@
 
 #include <stdlib.mqh>  // ErrorDescription() のために必要
 
+// このMT4バージョンで未定義の定数を補完
+#ifndef ERR_INVALID_LOTS
+#define ERR_INVALID_LOTS 131
+#endif
+
 //============================================================
 // 入力パラメータ
 //============================================================
@@ -498,7 +503,7 @@ double OnTester()
    double dd_abs   = TesterStatistics(STAT_EQUITY_DD);
    double dd_rel   = TesterStatistics(STAT_EQUITY_DD_RELATIVE);  // %
    double trades   = TesterStatistics(STAT_TRADES);
-   double wins     = TesterStatistics(STAT_WIN_TRADES);
+   double wins     = TesterStatistics(STAT_PROFIT_TRADES);
    double gross_p  = TesterStatistics(STAT_GROSS_PROFIT);
    double gross_l  = TesterStatistics(STAT_GROSS_LOSS);
    double sharpe   = TesterStatistics(STAT_SHARPE_RATIO);
