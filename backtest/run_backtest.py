@@ -34,6 +34,34 @@ def _detect_encoding(raw: bytes):
         return raw.decode('cp932', errors='replace'), 'cp932', b''
 
 
+# terminal.ini の Period フィールドは MT4 タイムフレームのインデックス値
+_PERIOD_INDEX = {1: 0, 5: 1, 15: 2, 30: 3, 60: 4, 240: 5, 1440: 6, 10080: 7, 43200: 8}
+
+
+def _date_to_unix(date_str: str) -> int:
+    """'2024.01.01' → Unix タイムスタンプ (UTC)"""
+    from datetime import datetime, timezone
+    dt = datetime.strptime(date_str, "%Y.%m.%d").replace(tzinfo=timezone.utc)
+    return int(dt.timestamp())
+
+
+def update_last_parameters(from_date: str, to_date: str):
+    """lastparameters.ini の日付をUnixタイムスタンプで更新"""
+    path = config.MT4_TESTER_DIR / "lastparameters.ini"
+    content = (
+        "optimization=0\n"
+        "genetic=1\n"
+        "fitnes=0\n"
+        "method=0\n"
+        "use_date=1\n"
+        f"from={_date_to_unix(from_date)}\n"
+        f"to={_date_to_unix(to_date)}\n"
+    )
+    path.write_text(content, encoding="utf-8")
+    print(f"[lastparameters.ini 更新] {from_date}〜{to_date} "
+          f"({_date_to_unix(from_date)}〜{_date_to_unix(to_date)})")
+
+
 def update_terminal_ini_tester(symbol: str, period: int,
                                from_date: str, to_date: str):
     """
@@ -43,17 +71,16 @@ def update_terminal_ini_tester(symbol: str, period: int,
     ini_path = config.MT4_DATA_DIR / "config" / "terminal.ini"
     raw = ini_path.read_bytes()
     text, encoding, bom = _detect_encoding(raw)
-    print(f"[terminal.ini] encoding={encoding}")
+
+    period_idx = _PERIOD_INDEX.get(period, 1)  # デフォルトM5=1
 
     tester_updates = {
         'Expert':             f"{config.EA_NAME}.ex4",
         'ExpertParameters':   f"{config.EA_NAME}.set",
         'Symbol':             symbol,
-        'Period':             str(period),
+        'Period':             str(period_idx),
         'Optimization':       '0',
         'Model':              str(config.DEFAULT_MODEL),
-        'FromDate':           from_date,
-        'ToDate':             to_date,
         'Deposit':            str(config.DEFAULT_DEPOSIT),
         'Leverage':           str(config.DEFAULT_LEVERAGE),
         'Currency':           config.DEFAULT_CURRENCY,
@@ -236,9 +263,10 @@ def run_backtest(
     # 1. EA をコピー
     copy_ea_to_mt4()
 
-    # 2. terminal.ini の [Tester] セクションを更新
+    # 2. terminal.ini の [Tester] と lastparameters.ini を更新
     all_params = {**config.FIXED_PARAMS, **params}
     update_terminal_ini_tester(symbol, period, from_date, to_date)
+    update_last_parameters(from_date, to_date)
     write_ea_set(all_params)
 
     # 3. 古い結果を削除
