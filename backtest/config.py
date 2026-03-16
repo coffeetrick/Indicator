@@ -27,7 +27,7 @@ EA_SOURCE = Path(r"C:\dev\claude\Indicator\MT4\Experts\jaja_EA_v5.mq4")
 # ============================================================
 # バックテスト デフォルト設定
 # ============================================================
-DEFAULT_SYMBOL   = "USDJPY"
+DEFAULT_SYMBOL   = "USDJPY-cd"
 DEFAULT_PERIOD   = 5          # M5 (MT4数値: 1=M1, 5=M5, 15=M15, 60=H1, 240=H4)
 DEFAULT_FROM     = "2024.01.01"
 DEFAULT_TO       = "2024.12.31"

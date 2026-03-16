@@ -22,33 +22,82 @@ import config
 # INI / SET ファイル生成
 # ============================================================
 
-def write_tester_ini(params: dict, symbol: str, period: int,
-                     from_date: str, to_date: str) -> Path:
+def update_terminal_ini_tester(symbol: str, period: int,
+                               from_date: str, to_date: str):
     """
-    MT4 ストラテジーテスター用の設定INIを書き出す。
-    terminal.exe /config: で指定するファイル。
+    MT4の terminal.ini の [Tester] セクションを直接書き換える。
+    MT4はこのファイルをストラテジーテスターの設定として読む。
     """
-    set_filename = f"{config.EA_NAME}.set"
-    ini_path = config.MT4_TESTER_DIR / f"{config.EA_NAME}_run.ini"
+    ini_path = config.MT4_DATA_DIR / "config" / "terminal.ini"
+    raw = ini_path.read_bytes()
 
-    content = (
-        f"[Tester]\n"
-        f"Expert={config.EA_NAME}\n"
-        f"ExpertParameters={set_filename}\n"
-        f"Symbol={symbol}\n"
-        f"Period={period}\n"
-        f"Optimization=0\n"
-        f"Model={config.DEFAULT_MODEL}\n"
-        f"FromDate={from_date}\n"
-        f"ToDate={to_date}\n"
-        f"Deposit={config.DEFAULT_DEPOSIT}\n"
-        f"Leverage={config.DEFAULT_LEVERAGE}\n"
-        f"Currency={config.DEFAULT_CURRENCY}\n"
-        f"ShutdownTerminal=1\n"
-    )
+    # BOM判定してデコード
+    if raw[:2] == b'\xff\xfe':
+        bom = b'\xff\xfe'
+        text = raw[2:].decode('utf-16-le')
+    elif raw[:2] == b'\xfe\xff':
+        bom = b'\xfe\xff'
+        text = raw[2:].decode('utf-16-be')
+    else:
+        bom = b''
+        text = raw.decode('utf-16-le')
 
-    ini_path.write_text(content, encoding="utf-8")
-    return ini_path
+    tester_updates = {
+        'Expert':             f"{config.EA_NAME}.ex4",
+        'ExpertParameters':   f"{config.EA_NAME}.set",
+        'Symbol':             symbol,
+        'Period':             str(period),
+        'Optimization':       '0',
+        'Model':              str(config.DEFAULT_MODEL),
+        'FromDate':           from_date,
+        'ToDate':             to_date,
+        'Deposit':            str(config.DEFAULT_DEPOSIT),
+        'Leverage':           str(config.DEFAULT_LEVERAGE),
+        'Currency':           config.DEFAULT_CURRENCY,
+        'ShutdownTerminal':   '1',
+        'VisualChart':        '0',
+    }
+
+    lines = text.splitlines(keepends=True)
+    in_tester = False
+    new_lines = []
+    written_keys: set = set()
+
+    for line in lines:
+        stripped = line.strip()
+
+        # セクション境界
+        if stripped.startswith('['):
+            if in_tester:
+                # [Tester]を抜ける前に未書込みキーを追加
+                for k, v in tester_updates.items():
+                    if k not in written_keys:
+                        new_lines.append(f"{k}={v}\r\n")
+                in_tester = False
+            in_tester = (stripped.lower() == '[tester]')
+            new_lines.append(line)
+            continue
+
+        # [Tester]内のキーを上書き
+        if in_tester and '=' in stripped:
+            key = stripped.split('=')[0].strip()
+            if key in tester_updates:
+                new_lines.append(f"{key}={tester_updates[key]}\r\n")
+                written_keys.add(key)
+                continue
+
+        new_lines.append(line)
+
+    # ファイル末尾が[Tester]だった場合
+    if in_tester:
+        for k, v in tester_updates.items():
+            if k not in written_keys:
+                new_lines.append(f"{k}={v}\r\n")
+
+    new_text = ''.join(new_lines)
+    ini_path.write_bytes(bom + new_text.encode('utf-16-le'))
+    print(f"[terminal.ini 更新] Symbol={symbol} Period=M{period} "
+          f"{from_date}〜{to_date}")
 
 
 def write_ea_set(params: dict) -> Path:
@@ -104,10 +153,10 @@ def wait_for_result(timeout: int = config.BACKTEST_TIMEOUT) -> bool:
     return False
 
 
-def run_mt4_backtest(ini_path: Path) -> subprocess.Popen:
+def run_mt4_backtest() -> subprocess.Popen:
     """MT4をバックテストモードで起動"""
-    cmd = [config.MT4_EXE, f"/config:{ini_path}"]
-    print(f"[MT4 起動] {' '.join(cmd)}")
+    cmd = [config.MT4_EXE]
+    print(f"[MT4 起動] {config.MT4_EXE}")
     return subprocess.Popen(cmd)
 
 
@@ -184,16 +233,16 @@ def run_backtest(
     # 1. EA をコピー
     copy_ea_to_mt4()
 
-    # 2. 設定ファイル生成
+    # 2. terminal.ini の [Tester] セクションを更新
     all_params = {**config.FIXED_PARAMS, **params}
-    ini_path = write_tester_ini(all_params, symbol, period, from_date, to_date)
+    update_terminal_ini_tester(symbol, period, from_date, to_date)
     write_ea_set(all_params)
 
     # 3. 古い結果を削除
     clean_old_result()
 
     # 4. MT4 起動
-    proc = run_mt4_backtest(ini_path)
+    proc = run_mt4_backtest()
 
     # 5. 完了待ち
     completed = wait_for_result(timeout)
