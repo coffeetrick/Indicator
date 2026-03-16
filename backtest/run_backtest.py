@@ -22,6 +22,18 @@ import config
 # INI / SET ファイル生成
 # ============================================================
 
+def _detect_encoding(raw: bytes):
+    """INIファイルのエンコーディングを検出してテキストとメタ情報を返す"""
+    if raw[:2] == b'\xff\xfe':
+        return raw[2:].decode('utf-16-le'), 'utf-16-le', b'\xff\xfe'
+    if raw[:2] == b'\xfe\xff':
+        return raw[2:].decode('utf-16-be'), 'utf-16-be', b'\xfe\xff'
+    try:
+        return raw.decode('utf-8'), 'utf-8', b''
+    except UnicodeDecodeError:
+        return raw.decode('cp932', errors='replace'), 'cp932', b''
+
+
 def update_terminal_ini_tester(symbol: str, period: int,
                                from_date: str, to_date: str):
     """
@@ -30,17 +42,8 @@ def update_terminal_ini_tester(symbol: str, period: int,
     """
     ini_path = config.MT4_DATA_DIR / "config" / "terminal.ini"
     raw = ini_path.read_bytes()
-
-    # BOM判定してデコード
-    if raw[:2] == b'\xff\xfe':
-        bom = b'\xff\xfe'
-        text = raw[2:].decode('utf-16-le')
-    elif raw[:2] == b'\xfe\xff':
-        bom = b'\xfe\xff'
-        text = raw[2:].decode('utf-16-be')
-    else:
-        bom = b''
-        text = raw.decode('utf-16-le')
+    text, encoding, bom = _detect_encoding(raw)
+    print(f"[terminal.ini] encoding={encoding}")
 
     tester_updates = {
         'Expert':             f"{config.EA_NAME}.ex4",
@@ -95,9 +98,9 @@ def update_terminal_ini_tester(symbol: str, period: int,
                 new_lines.append(f"{k}={v}\r\n")
 
     new_text = ''.join(new_lines)
-    ini_path.write_bytes(bom + new_text.encode('utf-16-le'))
-    print(f"[terminal.ini 更新] Symbol={symbol} Period=M{period} "
-          f"{from_date}〜{to_date}")
+    ini_path.write_bytes(bom + new_text.encode(encoding, errors='replace'))
+    print(f"[terminal.ini 更新] encoding={encoding} Symbol={symbol} "
+          f"Period=M{period} {from_date}〜{to_date}")
 
 
 def write_ea_set(params: dict) -> Path:
